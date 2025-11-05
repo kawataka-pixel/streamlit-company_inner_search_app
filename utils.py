@@ -8,13 +8,18 @@
 import os
 from dotenv import load_dotenv
 import streamlit as st
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema import HumanMessage
-from langchain_openai import ChatOpenAI
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-import constants as ct
 
+# ★ここを新方式に！
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage
+
+from langchain_openai import ChatOpenAI
+# ★history_aware_retriever のパスが変わってます
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+
+import constants as ct
 
 ############################################################
 # 設定関連
