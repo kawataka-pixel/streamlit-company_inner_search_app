@@ -14,7 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 # ★history_aware_retriever のパスが変わってます
-from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain.chains import create_history_aware_retriever
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 
@@ -74,7 +74,7 @@ def get_llm_response(chat_message):
         LLMからの回答
     """
     # LLMのオブジェクトを用意
-    llm = ChatOpenAI(model_name=ct.MODEL, temperature=ct.TEMPERATURE)
+    llm = ChatOpenAI(model=ct.MODEL, temperature=ct.TEMPERATURE)
 
     # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのプロンプトテンプレートを作成
     question_generator_template = ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT
@@ -115,6 +115,11 @@ def get_llm_response(chat_message):
     # LLMへのリクエストとレスポンス取得
     llm_response = chain.invoke({"input": chat_message, "chat_history": st.session_state.chat_history})
     # LLMレスポンスを会話履歴に追加
-    st.session_state.chat_history.extend([HumanMessage(content=chat_message), llm_response["answer"]])
+    from langchain_core.messages import HumanMessage, AIMessage
+
+    st.session_state.chat_history.extend([
+        HumanMessage(content=chat_message),
+        AIMessage(content=llm_response["answer"])
+    ])
 
     return llm_response
