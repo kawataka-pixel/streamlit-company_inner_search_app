@@ -104,3 +104,7 @@ def get_llm_response(chat_message: str):
     # ソース表示用（不要なら削除OK）
     docs = st.session_state.retriever.get_relevant_documents(chat_message)
     return {"answer": answer, "context": docs}
+
+def build_error_message(msg: str) -> str:
+    """エラー表示用にメッセージを整形"""
+    return f"⚠️ {msg}\n\n対処: 設定(.env/Secrets)やAPIキー、依存ライブラリ、初期化処理を確認して再実行してください。"

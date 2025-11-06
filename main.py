@@ -35,6 +35,13 @@ st.set_page_config(
 # ログ出力を行うためのロガーの設定
 logger = logging.getLogger(ct.LOGGER_NAME)
 
+# （set_page_config の直後あたりに入れてOK）
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "mode" not in st.session_state:
+    st.session_state.mode = ct.ANSWER_MODE_1  # 既定モード
+
 
 ############################################################
 # 3. 初期化処理
