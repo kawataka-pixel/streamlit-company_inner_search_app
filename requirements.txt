@@ -3,3 +3,4 @@ python-dotenv
 langchain>=0.2.12
 langchain-community>=0.2.12
 langchain-openai>=0.1.20
+python-docx
