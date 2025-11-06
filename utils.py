@@ -9,12 +9,18 @@ import os
 from dotenv import load_dotenv
 import streamlit as st
 
-# ★ここを新方式に！
+# ==========================================================
+# LangChain（最新版0.3系）対応の新しいインポート構成
+# ==========================================================
+
+# プロンプトとメッセージ関連（langchain_coreに統合）
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage
+
+# OpenAI連携
 from langchain_openai import ChatOpenAI
-# ★history_aware_retriever のパスが変わってます
-from langchain.chains import create_history_aware_retriever
+
+# チェーン関連（history_aware_retriever は削除！）
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 
