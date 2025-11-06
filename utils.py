@@ -12,7 +12,6 @@ import streamlit as st
 # ★ここを新方式に！
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage
-
 from langchain_openai import ChatOpenAI
 # ★history_aware_retriever のパスが変わってます
 from langchain.chains.history_aware_retriever import create_history_aware_retriever

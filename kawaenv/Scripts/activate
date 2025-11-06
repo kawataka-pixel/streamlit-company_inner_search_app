@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\kawat\OneDrive\デスクトップ\company_inner_search_app\kawaenv"
+VIRTUAL_ENV="C:\projects\company_inner_search_app\kawaenv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
