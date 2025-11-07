@@ -25,24 +25,12 @@ import constants as ct
 ############################################################
 # 2. 設定関連
 ############################################################
-# 2. 設定関連 の直前か最上部で
-load_dotenv()
 # ブラウザタブの表示文言を設定
 st.set_page_config(
     page_title=ct.APP_NAME
 )
-
 # ログ出力を行うためのロガーの設定
 logger = logging.getLogger(ct.LOGGER_NAME)
-
-# （set_page_config の直後あたりに入れてOK）
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "mode" not in st.session_state:
-    st.session_state.mode = ct.ANSWER_MODE_1  # 既定モード
-
-
 ############################################################
 # 3. 初期化処理
 ############################################################
@@ -56,12 +44,10 @@ except Exception as e:
     st.error(utils.build_error_message(ct.INITIALIZE_ERROR_MESSAGE), icon=ct.ERROR_ICON)
     # 後続の処理を中断
     st.stop()
-
 # アプリ起動時のログファイルへの出力
 if not "initialized" in st.session_state:
     st.session_state.initialized = True
     logger.info(ct.APP_BOOT_MESSAGE)
-
 
 ############################################################
 # 4. 初期表示

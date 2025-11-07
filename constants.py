@@ -56,6 +56,12 @@ WEB_URL_LOAD_TARGETS = [
     "https://generative-ai.web-camp.io/"
 ]
 
+# ==========================================
+# RAGチャンク分割設定
+# ==========================================
+CHUNK_SIZE = 500          # 1チャンクあたりの最大文字数
+CHUNK_OVERLAP = 50        # チャンク同士の重なり文字数
+CHUNK_SEPARATOR = "\n"    # チャンクを区切る文字
 
 # ==========================================
 # プロンプトテンプレート
@@ -110,4 +116,4 @@ NO_DOC_MATCH_MESSAGE = """
 CONVERSATION_LOG_ERROR_MESSAGE = "過去の会話履歴の表示に失敗しました。"
 GET_LLM_RESPONSE_ERROR_MESSAGE = "回答生成に失敗しました。"
 DISP_ANSWER_ERROR_MESSAGE = "回答表示に失敗しました。"
-ERROR_ICON = "🚨"
+ERROR_EMOJI = "🚨"
