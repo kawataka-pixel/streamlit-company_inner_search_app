@@ -15,9 +15,7 @@ from dotenv import load_dotenv
 import streamlit as st
 from docx import Document
 from langchain_community.document_loaders import WebBaseLoader
-
-from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
-
+from langchain.text_splitter import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 import constants as ct
@@ -130,6 +128,7 @@ def initialize_retriever():
     chunk_overlap=ct.CHUNK_OVERLAP,
     separator=ct.CHUNK_SEPARATOR   # ← ここを定数に
 )
+
 
     # チャンク分割を実施
     splitted_docs = text_splitter.split_documents(docs_all)

@@ -20,8 +20,6 @@ import components as cn
 # （自作）変数（定数）がまとめて定義・管理されているモジュール
 import constants as ct
 
-
-
 ############################################################
 # 2. 設定関連
 ############################################################
@@ -31,6 +29,7 @@ st.set_page_config(
 )
 # ログ出力を行うためのロガーの設定
 logger = logging.getLogger(ct.LOGGER_NAME)
+
 ############################################################
 # 3. 初期化処理
 ############################################################
@@ -44,10 +43,12 @@ except Exception as e:
     st.error(utils.build_error_message(ct.INITIALIZE_ERROR_MESSAGE), icon=ct.ERROR_ICON)
     # 後続の処理を中断
     st.stop()
+
 # アプリ起動時のログファイルへの出力
 if not "initialized" in st.session_state:
     st.session_state.initialized = True
     logger.info(ct.APP_BOOT_MESSAGE)
+
 
 ############################################################
 # 4. 初期表示
@@ -151,3 +152,4 @@ if chat_message:
     st.session_state.messages.append({"role": "user", "content": chat_message})
     # 表示用の会話ログにAIメッセージを追加
     st.session_state.messages.append({"role": "assistant", "content": content})
+

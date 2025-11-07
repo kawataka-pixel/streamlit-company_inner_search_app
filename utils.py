@@ -1,108 +1,116 @@
-﻿"""
-このファイルは、画面表示以外の処理用関数をまとめたファイルです。
+"""
+このファイルは、画面表示以外の様々な関数定義のファイルです。
 """
 
+############################################################
+# ライブラリの読み込み
+############################################################
+import os
 from dotenv import load_dotenv
 import streamlit as st
-
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.schema import HumanMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.output_parsers import StrOutputParser
-
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 import constants as ct
 
+
+############################################################
+# 設定関連
+############################################################
+# 「.env」ファイルで定義した環境変数の読み込み
 load_dotenv()
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
 
+############################################################
+# 関数定義
+############################################################
 
-def get_llm_response(chat_message: str):
+def get_source_icon(source):
     """
-    LangChain 1.x 構成に合わせた処理で回答を生成する。
-    ステップ: 履歴を独立化 → 検索 → 回答生成。
-    戻り値: {"answer": str, "context": List[Document]}
+    メッセージと一緒に表示するアイコンの種類を取得
+
+    Args:
+        source: 参照元のありか
+
+    Returns:
+        メッセージと一緒に表示するアイコンの種類
     """
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-
-    retriever = st.session_state.get("retriever")
-    if retriever is None:
-        st.error("🔎 検索エンジン（retriever）が未初期化です。initialize.py で設定してください。")
-        return {"answer": "現在、検索準備中です。しばらく待ってから再試行してください。", "context": []}
-
-    llm = ChatOpenAI(model=ct.MODEL, temperature=ct.TEMPERATURE)
-
-    reform_prompt = ChatPromptTemplate.from_messages([
-        ("system", ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ])
-    refine_chain = reform_prompt | llm | StrOutputParser()
-
-    refined_query = refine_chain.invoke({
-        "input": chat_message,
-        "chat_history": st.session_state.chat_history,
-    })
-
-    docs_for_answer = retriever.invoke(refined_query)
-    # LangChainの変換でクエリが変わりすぎてヒットしない場合のフォールバック
-    if not docs_for_answer:
-        docs_for_answer = retriever.invoke(chat_message)
-
-    context_text = "\n\n".join(doc.page_content for doc in docs_for_answer)
-
-    qa_system = ct.SYSTEM_PROMPT_DOC_SEARCH if st.session_state.mode == ct.ANSWER_MODE_1 else ct.SYSTEM_PROMPT_INQUIRY
-    qa_prompt = ChatPromptTemplate.from_messages([
-        ("system", qa_system),
-        MessagesPlaceholder("chat_history"),
-        ("human", "質問: {input}\n\n参照文書:\n{context}"),
-    ])
-    answer_runnable = qa_prompt | llm | StrOutputParser()
-    answer = answer_runnable.invoke({
-        "input": chat_message,
-        "chat_history": st.session_state.chat_history,
-        "context": context_text,
-    })
-
-    st.session_state.chat_history.extend([
-        HumanMessage(content=chat_message),
-        AIMessage(content=answer),
-    ])
-
-    return {"answer": answer, "context": docs_for_answer}
+    # 参照元がWebページの場合とファイルの場合で、取得するアイコンの種類を変える
+    if source.startswith("http"):
+        icon = ct.LINK_SOURCE_ICON
+    else:
+        icon = ct.DOC_SOURCE_ICON
+    
+    return icon
 
 
-def build_error_message(msg: str) -> str:
-    """エラー表示用のメッセージを整形"""
-    return f"⚠️ {msg}\n\n対処: 設定(.env/Secrets)やAPIキー、依存ライブラリ、初期化処理を確認して再実行してください。"
-
-
-
-def get_source_icon(source: str) -> str:
+def build_error_message(message):
     """
-    参照元の文字列から表示用のアイコンを返す。
-    - URL(http/https)なら LINK_ICON
-    - それ以外（ローカル/パス/空）は DOC_ICON or WARNING_ICON
+    エラーメッセージと管理者問い合わせテンプレートの連結
+
+    Args:
+        message: 画面上に表示するエラーメッセージ
+
+    Returns:
+        エラーメッセージと管理者問い合わせテンプレートの連結テキスト
     """
-    if not source or not str(source).strip():
-        return ct.WARNING_ICON
-
-    source_str = str(source).strip().lower()
-    if source_str.startswith('http://') or source_str.startswith('https://'):
-        return ct.LINK_SOURCE_ICON
-
-    return ct.DOC_SOURCE_ICON
+    return "\n".join([message, ct.COMMON_ERROR_MESSAGE])
 
 
-def build_excerpt(text: str, max_chars: int = 160) -> str:
-    """テキストから簡易的な抜粋を生成する"""
-    if not text:
-        return ""
+def get_llm_response(chat_message):
+    """
+    LLMからの回答取得
 
-    compact = " ".join(text.split())
-    if len(compact) <= max_chars:
-        return compact
+    Args:
+        chat_message: ユーザー入力値
 
-    return compact[:max_chars].rstrip() + "..."
+    Returns:
+        LLMからの回答
+    """
+    # LLMのオブジェクトを用意
+    llm = ChatOpenAI(model_name=ct.MODEL, temperature=ct.TEMPERATURE)
+
+    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのプロンプトテンプレートを作成
+    question_generator_template = ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT
+    question_generator_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", question_generator_template),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}")
+        ]
+    )
+
+    # モードによってLLMから回答を取得する用のプロンプトを変更
+    if st.session_state.mode == ct.ANSWER_MODE_1:
+        # モードが「社内文書検索」の場合のプロンプト
+        question_answer_template = ct.SYSTEM_PROMPT_DOC_SEARCH
+    else:
+        # モードが「社内問い合わせ」の場合のプロンプト
+        question_answer_template = ct.SYSTEM_PROMPT_INQUIRY
+    # LLMから回答を取得する用のプロンプトテンプレートを作成
+    question_answer_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", question_answer_template),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}")
+        ]
+    )
+
+    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのRetrieverを作成
+    history_aware_retriever = create_history_aware_retriever(
+        llm, st.session_state.retriever, question_generator_prompt
+    )
+
+    # LLMから回答を取得する用のChainを作成
+    question_answer_chain = create_stuff_documents_chain(llm, question_answer_prompt)
+    # 「RAG x 会話履歴の記憶機能」を実現するためのChainを作成
+    chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
+    # LLMへのリクエストとレスポンス取得
+    llm_response = chain.invoke({"input": chat_message, "chat_history": st.session_state.chat_history})
+    # LLMレスポンスを会話履歴に追加
+    st.session_state.chat_history.extend([HumanMessage(content=chat_message), llm_response["answer"]])
+
+    return llm_response
