@@ -10,6 +10,26 @@ import utils
 import constants as ct
 
 
+def _normalize_page_number(page_number):
+    """メタデータのページ番号を1始まりの表示値に整形"""
+    if page_number is None:
+        return None
+    if isinstance(page_number, (int, float)):
+        return int(page_number) + 1
+    if isinstance(page_number, str):
+        stripped = page_number.strip()
+        if stripped.isdigit():
+            return int(stripped) + 1
+    return page_number
+
+
+def _format_source_with_page(source_path, page_number=None):
+    """ファイルパスにページ番号を付与して表示用文字列を返す"""
+    if page_number in (None, ""):
+        return source_path
+    return f"{source_path} (ページNO.{page_number})"
+
+
 ############################################################
 # 関数定義
 ############################################################
@@ -76,18 +96,20 @@ def display_conversation_log():
                     if not "no_file_path_flg" in message["content"]:
                         st.markdown(message["content"]["main_message"])
                         icon = utils.get_source_icon(message['content']['main_file_path'])
-                        if "main_page_number" in message["content"]:
-                            st.success(f"{message['content']['main_file_path']}", icon=icon)
-                        else:
-                            st.success(f"{message['content']['main_file_path']}", icon=icon)
+                        display_main = _format_source_with_page(
+                            message['content']['main_file_path'],
+                            message["content"].get("main_page_number")
+                        )
+                        st.success(display_main, icon=icon)
                         if "sub_message" in message["content"]:
                             st.markdown(message["content"]["sub_message"])
                             for sub_choice in message["content"]["sub_choices"]:
                                 icon = utils.get_source_icon(sub_choice['source'])
-                                if "page_number" in sub_choice:
-                                    st.info(f"{sub_choice['source']}", icon=icon)
-                                else:
-                                    st.info(f"{sub_choice['source']}", icon=icon)
+                                display_sub = _format_source_with_page(
+                                    sub_choice['source'],
+                                    sub_choice.get("page_number")
+                                )
+                                st.info(display_sub, icon=icon)
                     else:
                         st.markdown(message["content"]["answer"])
                 else:
@@ -109,11 +131,10 @@ def display_search_llm_response(llm_response):
         main_message = "入力内容に関する情報は、以下のファイルに含まれている可能性があります。"
         st.markdown(main_message)
         icon = utils.get_source_icon(main_file_path)
+        main_page_number = None
         if "page" in llm_response["context"][0].metadata:
-            main_page_number = llm_response["context"][0].metadata["page"]
-            st.success(f"{main_file_path}", icon=icon)
-        else:
-            st.success(f"{main_file_path}", icon=icon)
+            main_page_number = _normalize_page_number(llm_response["context"][0].metadata["page"])
+        st.success(_format_source_with_page(main_file_path, main_page_number), icon=icon)
 
         sub_choices = []
         duplicate_check_list = []
@@ -125,7 +146,7 @@ def display_search_llm_response(llm_response):
                 continue
             duplicate_check_list.append(sub_file_path)
             if "page" in document.metadata:
-                sub_page_number = document.metadata["page"]
+                sub_page_number = _normalize_page_number(document.metadata["page"])
                 sub_choice = {"source": sub_file_path, "page_number": sub_page_number}
             else:
                 sub_choice = {"source": sub_file_path}
@@ -136,16 +157,16 @@ def display_search_llm_response(llm_response):
             st.markdown(sub_message)
             for sub_choice in sub_choices:
                 icon = utils.get_source_icon(sub_choice['source'])
-                if "page_number" in sub_choice:
-                    st.info(f"{sub_choice['source']}", icon=icon)
-                else:
-                    st.info(f"{sub_choice['source']}", icon=icon)
+                st.info(
+                    _format_source_with_page(sub_choice['source'], sub_choice.get("page_number")),
+                    icon=icon
+                )
 
         content = {}
         content["mode"] = ct.ANSWER_MODE_1
         content["main_message"] = main_message
         content["main_file_path"] = main_file_path
-        if "page" in llm_response["context"][0].metadata:
+        if main_page_number is not None:
             content["main_page_number"] = main_page_number
         if sub_choices:
             content["sub_message"] = sub_message
@@ -178,11 +199,9 @@ def display_contact_llm_response(llm_response):
             file_path = document.metadata["source"]
             if file_path in file_path_list:
                 continue
-            if "page" in document.metadata:
-                page_number = document.metadata["page"]
-                file_info = f"{file_path}"
-            else:
-                file_info = f"{file_path}"
+            page_number = document.metadata.get("page")
+            normalized_page = _normalize_page_number(page_number) if page_number is not None else None
+            file_info = _format_source_with_page(file_path, normalized_page)
 
             icon = utils.get_source_icon(file_path)
             st.info(file_info, icon=icon)
