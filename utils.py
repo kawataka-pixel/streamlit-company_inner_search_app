@@ -1,119 +1,128 @@
 """
-このファイルは、画面表示以外の様々な関数定義のファイルです。
+このファイルは、画面表示以外の汎用処理をまとめたユーティリティです。
 """
 
-############################################################
-# ライブラリの読み込み
-############################################################
-import os
 from dotenv import load_dotenv
 import streamlit as st
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage
+
 from langchain_openai import ChatOpenAI
-from langchain_classic.chains import (
-    create_history_aware_retriever,
-    create_retrieval_chain,
-)
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.output_parsers import StrOutputParser
+
 import constants as ct
 
 
-############################################################
-# 設定関連
-############################################################
-# 「.env」ファイルで定義した環境変数の読み込み
+# .env に定義された環境変数を読み込み
 load_dotenv()
 
 
-############################################################
-# 関数定義
-############################################################
-
-def get_source_icon(source):
+def get_source_icon(source: str) -> str:
     """
-    メッセージと一緒に表示するアイコンの種類を取得
-
-    Args:
-        source: 参照元のありか
-
-    Returns:
-        メッセージと一緒に表示するアイコンの種類
+    参照元（ファイル / URL）に応じた表示用アイコンを返す。
     """
-    # 参照元がWebページの場合とファイルの場合で、取得するアイコンの種類を変える
-    if source.startswith("http"):
-        icon = ct.LINK_SOURCE_ICON
-    else:
-        icon = ct.DOC_SOURCE_ICON
-    
-    return icon
+    if not source or not str(source).strip():
+        return ct.WARNING_ICON
+
+    src = str(source).strip().lower()
+    if src.startswith("http://") or src.startswith("https://"):
+        return ct.LINK_SOURCE_ICON
+    return ct.DOC_SOURCE_ICON
 
 
-def build_error_message(message):
+def build_error_message(message: str) -> str:
     """
-    エラーメッセージと管理者問い合わせテンプレートの連結
-
-    Args:
-        message: 画面上に表示するエラーメッセージ
-
-    Returns:
-        エラーメッセージと管理者問い合わせテンプレートの連結テキスト
+    エラーメッセージと共通テンプレートを連結して返す。
     """
     return "\n".join([message, ct.COMMON_ERROR_MESSAGE])
 
 
-def get_llm_response(chat_message):
-    """
-    LLMからの回答取得
+def _ensure_chat_history():
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-    Args:
-        chat_message: ユーザー入力値
+
+def _build_independent_query(llm: ChatOpenAI, chat_message: str) -> str:
+    """
+    会話履歴なしでも理解できる独立したクエリを生成する。
+    """
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke(
+        {
+            "input": chat_message,
+            "chat_history": st.session_state.chat_history,
+        }
+    )
+
+
+def _generate_answer(llm: ChatOpenAI, chat_message: str, context_text: str) -> str:
+    """
+    RAGで取得した文脈 + 会話履歴をもとに回答を生成する。
+    """
+    qa_system = (
+        ct.SYSTEM_PROMPT_DOC_SEARCH
+        if st.session_state.mode == ct.ANSWER_MODE_1
+        else ct.SYSTEM_PROMPT_INQUIRY
+    )
+    qa_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", qa_system),
+            MessagesPlaceholder("chat_history"),
+            ("human", "質問: {input}\n\n参照文書:\n{context}"),
+        ]
+    )
+    answer_chain = qa_prompt | llm | StrOutputParser()
+    return answer_chain.invoke(
+        {
+            "input": chat_message,
+            "chat_history": st.session_state.chat_history,
+            "context": context_text,
+        }
+    )
+
+
+def get_llm_response(chat_message: str):
+    """
+    LangChain 1.x の Runnable API を用いて RAG 応答を生成する。
 
     Returns:
-        LLMからの回答
+        {"answer": str, "context": List[Document]}
     """
-    # LLMのオブジェクトを用意
-    llm = ChatOpenAI(model_name=ct.MODEL, temperature=ct.TEMPERATURE)
+    _ensure_chat_history()
 
-    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのプロンプトテンプレートを作成
-    question_generator_template = ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT
-    question_generator_prompt = ChatPromptTemplate.from_messages(
+    retriever = st.session_state.get("retriever")
+    if retriever is None:
+        st.error("🔎 検索エンジン（retriever）が未初期化です。initialize.py で設定してください。")
+        return {
+            "answer": "現在、検索準備中です。しばらく待ってから再試行してください。",
+            "context": [],
+        }
+
+    llm = ChatOpenAI(model=ct.MODEL, temperature=ct.TEMPERATURE)
+
+    refined_query = _build_independent_query(llm, chat_message)
+
+    docs_for_answer = retriever.invoke(refined_query)
+    if not docs_for_answer:
+        # 質問の変形でヒットしない場合は元の入力で再検索
+        docs_for_answer = retriever.invoke(chat_message)
+
+    context_text = "\n\n".join(doc.page_content for doc in docs_for_answer)
+
+    answer = _generate_answer(llm, chat_message, context_text)
+
+    st.session_state.chat_history.extend(
         [
-            ("system", question_generator_template),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}")
+            HumanMessage(content=chat_message),
+            AIMessage(content=answer),
         ]
     )
 
-    # モードによってLLMから回答を取得する用のプロンプトを変更
-    if st.session_state.mode == ct.ANSWER_MODE_1:
-        # モードが「社内文書検索」の場合のプロンプト
-        question_answer_template = ct.SYSTEM_PROMPT_DOC_SEARCH
-    else:
-        # モードが「社内問い合わせ」の場合のプロンプト
-        question_answer_template = ct.SYSTEM_PROMPT_INQUIRY
-    # LLMから回答を取得する用のプロンプトテンプレートを作成
-    question_answer_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", question_answer_template),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}")
-        ]
-    )
-
-    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのRetrieverを作成
-    history_aware_retriever = create_history_aware_retriever(
-        llm, st.session_state.retriever, question_generator_prompt
-    )
-
-    # LLMから回答を取得する用のChainを作成
-    question_answer_chain = create_stuff_documents_chain(llm, question_answer_prompt)
-    # 「RAG x 会話履歴の記憶機能」を実現するためのChainを作成
-    chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-
-    # LLMへのリクエストとレスポンス取得
-    llm_response = chain.invoke({"input": chat_message, "chat_history": st.session_state.chat_history})
-    # LLMレスポンスを会話履歴に追加
-    st.session_state.chat_history.extend([HumanMessage(content=chat_message), llm_response["answer"]])
-
-    return llm_response
+    return {"answer": answer, "context": docs_for_answer}
